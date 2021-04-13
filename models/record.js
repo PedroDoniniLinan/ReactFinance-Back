@@ -1,16 +1,20 @@
 import mongoose from 'mongoose';
 
 const recordSchema = mongoose.Schema({
-    value: {
+    Income: {
         type: Number,
         default: 0
     },
-    createdAt: {
+    Expense: {
+        type: Number,
+        default: 0
+    },
+    Date: {
         type: Date,
         default: new Date()
     }
 });
 
-const Record = mongoose.model('Record', recordSchema, 'record');
+const Record = mongoose.model('Record', recordSchema, 'test');
 
 export default Record;

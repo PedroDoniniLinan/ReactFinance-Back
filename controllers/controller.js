@@ -5,23 +5,29 @@ L3M.setMonth(L3M.getMonth() - 3);
 
 const matchL3M = {
     "$match": {
-        "createdAt": {"$gte":  L3M}
+        "Date": {"$gte":  L3M}
+    }
+}
+
+const matchParents = {
+    "$match": {
+        "Account": {"$ne": "Parents"}
     }
 }
 
 const groupByDate = {
     "$group": {
-        "_id": {"date": "$createdAt"},
-        "income": {"$sum": "$income"},
-        "expense": {"$sum": "$expense"},
+        "_id": {"date": "$Date"},
+        "income": {"$sum": "$Income"},
+        "expenses": {"$sum": "$Expenses"},
     }
 }
 
 const groupSum = {
     "$group": {
         "_id": "0",
-        "income": {"$sum": "$income"},
-        "expense": {"$sum": "$expense"},
+        "income": {"$sum": "$Income"},
+        "expenses": {"$sum": "$Expenses"},
     }
 }
 
@@ -36,7 +42,7 @@ const projectCashFlow = {
     "$project": {
         "date": "$_id.date",
         "income": {"$toDouble": "$income"},
-        "expense": {"$toDouble": "$expense"},
+        "expenses": {"$toDouble": "$expenses"},
         "_id": 0
     }
 }
@@ -44,14 +50,14 @@ const projectCashFlow = {
 const projectNetIncome = {
     "$project": {
         "date": "$_id.date",
-        "netIncome": {"$toDouble": {"$subtract": ["$income", "$expense"]}},
+        "netIncome": {"$toDouble": {"$subtract": ["$income", "$expenses"]}},
         "_id": 0
     }
 }
 
 const projectHeaderSum = {
     "$project": {
-        "balance": {"$toDouble": {"$subtract": ["$income", "$expense"]}},
+        "balance": {"$toDouble": {"$subtract": ["$income", "$expenses"]}},
         "_id": 0
     }
 }
@@ -65,7 +71,7 @@ const projectHeaderAvg = {
 
 const projectHeaderMargin = {
     "$project": {
-        "profitMargin": {"$toDouble": {"$divide": [{"$subtract": ["$income", "$expense"]}, "$income"]}},
+        "profitMargin": {"$toDouble": {"$divide": [{"$subtract": ["$income", "$expenses"]}, "$income"]}},
         "_id": 0
     }
 }
@@ -89,10 +95,12 @@ export const getRecords = async (req, res) => {
 export const getHeader = async (req, res) => {
     try {
         const records = await Record.aggregate([
+            matchParents,
             groupSum,
             projectHeaderSum
         ]);
         const recordsAvg = await Record.aggregate([
+            matchParents,
             matchL3M,
             groupByDate,
             projectNetIncome,
@@ -118,6 +126,7 @@ export const getHeader = async (req, res) => {
 export const getNetIncome = async (req, res) => {
     try {
         const records = await Record.aggregate([
+            matchParents,
             groupByDate,
             projectNetIncome,
             sortByDate
@@ -133,6 +142,7 @@ export const getBalance = async (req, res) => {
     try {
         let balance = 0;
         let records = await Record.aggregate([
+            matchParents,
             groupByDate,
             projectNetIncome,
             sortByDate
@@ -153,6 +163,7 @@ export const getCashFlow = async (req, res) => {
     try {
         // let balance = 0;
         let records = await Record.aggregate([
+            matchParents,
             groupByDate,
             projectCashFlow,
             sortByDate

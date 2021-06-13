@@ -1,21 +1,36 @@
 import Record from '../models/record.js'
+import Positions from '../models/positions.js'
 
 var M = new Date();
 var L3M = new Date();
+var L1Y = new Date();
+
 M.setDate(1);
 M.setHours(0);
 M.setMinutes(0);
 M.setSeconds(0);
 M.setMilliseconds(0);
 M.setMonth(M.getMonth() - 1);
+
 L3M.setDate(1);
 L3M.setHours(0);
 L3M.setMinutes(0);
 L3M.setSeconds(0);
 L3M.setMilliseconds(0);
 L3M.setMonth(L3M.getMonth() - 4);
-// console.log(M);
+
+L1Y.setDate(1);
+L1Y.setHours(0);
+L1Y.setMinutes(0);
+L1Y.setSeconds(0);
+L1Y.setMilliseconds(0);
+L1Y.setMonth(L1Y.getMonth() - 12);
+
+console.log(M);
 // console.log(L3M);
+// console.log(L1Y);
+
+// ------------------------------ MATCH ------------------------------ //
 
 const matchL3M = {
     "$match": {
@@ -23,9 +38,21 @@ const matchL3M = {
     }
 }
 
+const matchL1Y = {
+    "$match": {
+        "Date": {"$gte":  L1Y, "$lte": M}
+    }
+}
+
 const matchParents = {
     "$match": {
         "Account": {"$ne": "Parents"}
+    }
+}
+
+const matchInvestment = {
+    "$match": {
+        "$or": [{"Subcategory": {"$eq": "Buy tax"}}, {"Category": {"$eq": "Investments"}}]
     }
 }
 
@@ -48,6 +75,8 @@ const matchCategory = (c) => {
         }
     };
 }
+
+// ------------------------------ GROUP ------------------------------ //
 
 const groupByCategory = {
     "$group": {
@@ -81,6 +110,14 @@ const groupByDate = {
     }
 }
 
+const groupPositionByDate = {
+    "$group": {
+        "_id": {"date": "$Date"},
+        "position": {"$sum": "$Flex position"},
+        "income": {"$sum": "$Flex income"},
+    }
+}
+
 const groupSum = {
     "$group": {
         "_id": "0",
@@ -95,6 +132,16 @@ const groupAvg = {
         "avgNetIncome": {"$avg": "$netIncome"},
     }
 }
+
+const groupMultiply = {
+    "$group": {
+        "_id": "0",
+        "position": {"$sum": "$Flex position"},
+        "income": {"$sum": "$Flex income"},
+    }
+}
+
+// ------------------------------ PROJECT ------------------------------ //
 
 const projectIncomeCategory = {
     "$project": {
@@ -145,6 +192,16 @@ const projectHeaderMargin = {
         "_id": 0
     }
 }
+
+const projectYieldByMonth = {
+    "$project": {
+        "date": "$_id.date",
+        "yield": {"$toDouble": {"$add": [{"$divide": ["$income", "$position"]}, 1]}},
+        "_id": 0
+    }
+}
+
+// ------------------------------ ADD ------------------------------ //
 
 const addCategoryDate = {
     "$addFields":
@@ -217,28 +274,7 @@ const addDateQuarter = {
     }
 }
 
-// const addDateQuarter = {
-//     "$addFields": {
-//         "Date": {
-//             "$cond": [
-//                 { "$lte": ["$dateParts.month", 3] },
-//                 "Q1",
-//                 {
-//                 "$cond": [
-//                     { "$lte": ["$dateToParts.month", 6] },
-//                     "Q2",
-//                     {
-//                         "$cond": [{ "$lte": ["$dateToParts.month", 9] },
-//                             "Q3",
-//                             "Q4"
-//                         ],
-//                     },
-//                 ],
-//             },
-//             ],
-//         },
-//     }
-// }
+// ------------------------------ OTHER ------------------------------ //
 
 const replaceRoot = {"$replaceRoot":{"newRoot":"$tmp"}}
 
@@ -280,11 +316,51 @@ export const getHeader = async (req, res) => {
             projectHeaderMargin
         ]);
 
-        res.status(200).json({
-            balance: records[0].balance, 
-            avgNetIncome: recordsAvg[0].avgNetIncome, 
-            profitMargin: recordsMargin[0].profitMargin
-        });
+        res.status(200).json([
+            records[0].balance, 
+            recordsAvg[0].avgNetIncome, 
+            recordsMargin[0].profitMargin
+        ]);
+    } catch (error) {
+        res.status(404).json({ message: error.message });
+    }
+}
+
+export const getPortfolioHeader = async (req, res) => {
+    try {
+        const totalIncome = await Record.aggregate([
+            matchParents,
+            matchInvestment,
+            groupSum,
+            projectHeaderSum
+        ]);
+        const incomeAvg = await Record.aggregate([
+            matchParents,
+            matchL1Y,
+            matchInvestment,
+            groupByDate,
+            projectNetIncome,
+            groupAvg,
+            projectHeaderAvg
+        ]);
+        const yearYield = await Positions.aggregate([
+            matchL1Y,
+            groupPositionByDate,
+            projectYieldByMonth,
+
+        ]);
+
+        const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
+
+        // res.status(200).json(
+        //     yearYield
+        // );
+
+        res.status(200).json([
+            totalIncome[0].balance, 
+            incomeAvg[0].avgNetIncome, 
+            totalYield - 1
+        ]);
     } catch (error) {
         res.status(404).json({ message: error.message });
     }
@@ -409,18 +485,7 @@ export const getExpensesCategory = async (req, res) => {
         } else {
             pipeline = [...match, ...mainPipeline] 
         }
-        let records = await Record.aggregate(pipeline)
-
-        // let records = await Record.aggregate([
-        //     matchParents,
-        //     groupByCategory,
-        //     matchExpensesCategories,
-        //     groupByCategorySet,
-        //     projectExpensesCategory,
-        //     addCategoryDate,
-        //     replaceRoot,
-        //     sortByDate
-        // ])
+        let records = await Record.aggregate(pipeline);
         
         res.status(200).json(records);
     } catch (error) {
@@ -504,23 +569,7 @@ export const getExpensesSubcategory = async (req, res) => {
             let categories = JSON.parse(req.query.categories);
             pipeline.splice(0, 0, matchCategory(categories));
         }
-        let records = await Record.aggregate(pipeline)
-        // let pipeline = [
-        //     matchParents,
-        //     groupBySubcategory,
-        //     matchExpensesCategories,
-        //     groupByCategorySet,
-        //     projectExpensesCategory,
-        //     addCategoryDate,
-        //     replaceRoot,
-        //     sortByDate
-        // ]
-        // if(req.query && req.query.categories !== undefined) {
-        //     let categories = JSON.parse(req.query.categories);
-        //     pipeline.splice(0, 0, matchCategory(categories));
-        // }
-        // let records = await Record.aggregate(pipeline)
-        
+        let records = await Record.aggregate(pipeline);
         res.status(200).json(records);
     } catch (error) {
         res.status(404).json({ message: error.message });

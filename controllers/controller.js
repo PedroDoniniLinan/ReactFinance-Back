@@ -62,6 +62,12 @@ const matchIncomeCategories = {
     }
 }
 
+const matchAllocation = {
+    "$match": {
+        "position": {"$ne": 0}
+    }
+}
+
 const matchExpensesCategories = {
     "$match": {
         "expenses": {"$ne": 0}
@@ -118,6 +124,63 @@ const groupPositionByDate = {
     }
 }
 
+const groupPositionByCategory = {
+    "$group": {
+        "_id": {"date": "$Date", "category": "$Category"},
+        "position": {"$sum": "$Flex position"},
+        "income": {"$sum": "$Flex income"},
+    }
+}
+
+const groupAllocationByCategory = {
+    "$group": {
+        "_id": {"date": "$Date", "category": "$Category"},
+        "position": {"$sum": "$Position"}
+    }
+}
+
+const groupAllocationBySubcategory = {
+    "$group": {
+        "_id": {"date": "$Date", "category": "$Subcategory"},
+        "position": {"$sum": "$Position"}
+    }
+}
+
+const groupAllocationByCategorySet = {
+    "$group": {
+        "_id": "$_id.date",
+        "position": {"$addToSet": {"name":"$_id.category", "value": {"$sum": "$position"}}},
+    }
+}
+
+const groupYieldByCategory = {
+    "$group" : {
+        "_id": {"date": "$Date", "category": "$Category"},
+        "yield": {
+            "$accumulator": {
+                init: function() {                        // Set the initial state
+                    return { acc: 0 }
+                },
+                accumulate: function(state, y) {  // Define how to update the state
+                    return {
+                    acc: state.acc * y
+                    }
+                },
+                accumulateArgs: ["$yield"],              // Argument required by the accumulate function
+                merge: function(state1, state2) {         // When the operator performs a merge,
+                    return {                                // add the fields from the two states
+                        acc: state1.acc * state2.acc
+                    }
+                },
+                finalize: function(state) {               // After collecting the results from all documents,
+                    return (state.acc - 1)        // calculate the average
+                },
+                lang: "js"
+            }
+        }
+    }
+  }
+
 const groupSum = {
     "$group": {
         "_id": "0",
@@ -130,14 +193,6 @@ const groupAvg = {
     "$group": {
         "_id": "0",
         "avgNetIncome": {"$avg": "$netIncome"},
-    }
-}
-
-const groupMultiply = {
-    "$group": {
-        "_id": "0",
-        "position": {"$sum": "$Flex position"},
-        "income": {"$sum": "$Flex income"},
     }
 }
 
@@ -198,6 +253,21 @@ const projectYieldByMonth = {
         "date": "$_id.date",
         "yield": {"$toDouble": {"$add": [{"$divide": ["$income", "$position"]}, 1]}},
         "_id": 0
+    }
+}
+
+const projectYieldByCategory = {
+    "$project": {
+        "date": "$_id.date",
+        "category": "$_id.category",
+        "yield": {"$toDouble": {"$add": [{"$divide": ["$income", "$position"]}, 1]}},
+        "_id": 0
+    }
+}
+
+const projectAllocationCategory = {
+    "$project": {
+        "tmp": {$arrayToObject: {$zip:{inputs:["$position.name", "$position.value"]}}},
     }
 }
 
@@ -320,46 +390,6 @@ export const getHeader = async (req, res) => {
             records[0].balance, 
             recordsAvg[0].avgNetIncome, 
             recordsMargin[0].profitMargin
-        ]);
-    } catch (error) {
-        res.status(404).json({ message: error.message });
-    }
-}
-
-export const getPortfolioHeader = async (req, res) => {
-    try {
-        const totalIncome = await Record.aggregate([
-            matchParents,
-            matchInvestment,
-            groupSum,
-            projectHeaderSum
-        ]);
-        const incomeAvg = await Record.aggregate([
-            matchParents,
-            matchL1Y,
-            matchInvestment,
-            groupByDate,
-            projectNetIncome,
-            groupAvg,
-            projectHeaderAvg
-        ]);
-        const yearYield = await Positions.aggregate([
-            matchL1Y,
-            groupPositionByDate,
-            projectYieldByMonth,
-
-        ]);
-
-        const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
-
-        // res.status(200).json(
-        //     yearYield
-        // );
-
-        res.status(200).json([
-            totalIncome[0].balance, 
-            incomeAvg[0].avgNetIncome, 
-            totalYield - 1
         ]);
     } catch (error) {
         res.status(404).json({ message: error.message });
@@ -576,7 +606,74 @@ export const getExpensesSubcategory = async (req, res) => {
     }
 }
 
+export const getPortfolioHeader = async (req, res) => {
+    try {
+        const totalIncome = await Record.aggregate([
+            matchParents,
+            matchInvestment,
+            groupSum,
+            projectHeaderSum
+        ]);
+        const incomeAvg = await Record.aggregate([
+            matchParents,
+            matchL1Y,
+            matchInvestment,
+            groupByDate,
+            projectNetIncome,
+            groupAvg,
+            projectHeaderAvg
+        ]);
+        const yearYield = await Positions.aggregate([
+            matchL1Y,
+            groupPositionByDate,
+            projectYieldByMonth,
 
+        ]);
+
+        const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
+
+        // res.status(200).json(
+        //     yearYield
+        // );
+
+        res.status(200).json([
+            totalIncome[0].balance, 
+            incomeAvg[0].avgNetIncome, 
+            totalYield - 1
+        ]);
+    } catch (error) {
+        res.status(404).json({ message: error.message });
+    }
+}
+
+export const getAllocation = async (req, res) => {
+    try {
+        let groupCategory = [groupAllocationByCategory];
+        let groupSubcategory = [groupAllocationBySubcategory];
+
+        let mainPipeline = [
+            matchAllocation,
+            groupAllocationByCategorySet,
+            projectAllocationCategory,
+            addCategoryDate,
+            replaceRoot,
+            sortByDate
+        ]
+
+        let pipeline;
+        if(req.query && req.query.breakdown === "category") {
+            pipeline = [...groupCategory, ...mainPipeline] 
+        } else {
+            pipeline = [...groupSubcategory, ...mainPipeline] 
+        } 
+
+        const positions = await Positions.aggregate(pipeline);
+
+        res.status(200).json(positions);
+    } catch (error) {
+        res.status(404).json({ message: error.message });
+    }
+}
 
 // export const createTest =  async (req, res) => {
 //     const post = req.body;

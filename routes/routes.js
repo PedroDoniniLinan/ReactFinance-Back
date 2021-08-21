@@ -1,5 +1,5 @@
 import express from 'express'
-import { getRecords, getNetIncome, getBalance, getCashFlow, getHeader, getIncomeCategory, getExpensesCategory, getIncomeSubcategory, getExpensesSubcategory, getPortfolioHeader } from '../controllers/controller.js'
+import { getRecords, getNetIncome, getBalance, getCashFlow, getHeader, getIncomeCategory, getExpensesCategory, getIncomeSubcategory, getExpensesSubcategory, getPortfolioHeader, getAllocation } from '../controllers/controller.js'
 
 const router = express.Router();
 
@@ -13,5 +13,6 @@ router.get('/expensesCategory', getExpensesCategory);
 router.get('/incomeSubcategory', getIncomeSubcategory);
 router.get('/expensesSubcategory', getExpensesSubcategory);
 router.get('/portfolioHeader', getPortfolioHeader);
+router.get('/allocation', getAllocation);
 
 export default router;

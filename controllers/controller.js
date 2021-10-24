@@ -10,14 +10,14 @@ M.setHours(0);
 M.setMinutes(0);
 M.setSeconds(0);
 M.setMilliseconds(0);
-M.setMonth(M.getMonth() - 1);
+M.setMonth(M.getMonth() - 0);
 
 L3M.setDate(1);
 L3M.setHours(0);
 L3M.setMinutes(0);
 L3M.setSeconds(0);
 L3M.setMilliseconds(0);
-L3M.setMonth(L3M.getMonth() - 4);
+L3M.setMonth(L3M.getMonth() - 3);
 
 L1Y.setDate(1);
 L1Y.setHours(0);
@@ -183,6 +183,7 @@ const groupYieldByCategory = {
 
 const groupSum = {
     "$group": {
+        // "_id": "$Date",
         "_id": "0",
         "income": {"$sum": "$Income"},
         "expenses": {"$sum": "$Expenses"},
@@ -391,6 +392,9 @@ export const getHeader = async (req, res) => {
             recordsAvg[0].avgNetIncome, 
             recordsMargin[0].profitMargin
         ]);
+        // res.status(200).json(
+        //     recordsMargin
+        // );
     } catch (error) {
         res.status(404).json({ message: error.message });
     }

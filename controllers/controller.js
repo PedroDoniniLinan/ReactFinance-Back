@@ -68,6 +68,12 @@ const matchAllocation = {
     }
 }
 
+const matchYieldNotNull = {
+    "$match": {
+        "Flex position": { "$ne": null}
+    }
+}
+
 const matchExpensesCategories = {
     "$match": {
         "expenses": {"$ne": 0}
@@ -252,6 +258,8 @@ const projectHeaderMargin = {
 const projectYieldByMonth = {
     "$project": {
         "date": "$_id.date",
+        "income": "$income",
+        "position": "$position",
         "yield": {"$toDouble": {"$add": [{"$divide": ["$income", "$position"]}, 1]}},
         "_id": 0
     }
@@ -629,9 +637,9 @@ export const getPortfolioHeader = async (req, res) => {
         ]);
         const yearYield = await Positions.aggregate([
             matchL1Y,
+            // matchYieldNotNull,
             groupPositionByDate,
             projectYieldByMonth,
-
         ]);
 
         const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
@@ -670,6 +678,7 @@ export const getAllocation = async (req, res) => {
         } else {
             pipeline = [...groupSubcategory, ...mainPipeline] 
         } 
+        // pipeline = [matchAllocation];
 
         const positions = await Positions.aggregate(pipeline);
 

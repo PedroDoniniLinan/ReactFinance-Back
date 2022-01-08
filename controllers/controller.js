@@ -382,7 +382,8 @@ export const getHeader = async (req, res) => {
         ]);
         const recordsAvg = await Record.aggregate([
             matchParents,
-            matchL3M,
+            matchL1Y,
+            // matchL3M,
             groupByDate,
             projectNetIncome,
             groupAvg,
@@ -390,7 +391,8 @@ export const getHeader = async (req, res) => {
         ]);
         const recordsMargin = await Record.aggregate([
             matchParents,
-            matchL3M,
+            matchL1Y,
+            // matchL3M,
             groupSum,
             projectHeaderMargin
         ]);

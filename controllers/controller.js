@@ -68,6 +68,12 @@ const matchAllocation = {
     }
 }
 
+const matchNotNull = {
+    "$match": {
+        "Position": {"$ne": NaN}
+    }
+}
+
 const matchYieldNotNull = {
     "$match": {
         "Flex position": { "$ne": null}
@@ -141,7 +147,7 @@ const groupPositionByCategory = {
 const groupAllocationByCategory = {
     "$group": {
         "_id": {"date": "$Date", "category": "$Category"},
-        "position": {"$sum": "$Position"}
+        "position": {"$sum":  {"$ifNull": ["$Position", 0]}}
     }
 }
 
@@ -662,8 +668,9 @@ export const getPortfolioHeader = async (req, res) => {
 
 export const getAllocation = async (req, res) => {
     try {
-        let groupCategory = [groupAllocationByCategory];
-        let groupSubcategory = [groupAllocationBySubcategory];
+        // let groupCategory = [groupAllocationByCategory];
+        let groupCategory = [matchNotNull, groupAllocationByCategory];
+        let groupSubcategory = [matchNotNull, groupAllocationBySubcategory];
 
         let mainPipeline = [
             matchAllocation,
@@ -680,7 +687,6 @@ export const getAllocation = async (req, res) => {
         } else {
             pipeline = [...groupSubcategory, ...mainPipeline] 
         } 
-        // pipeline = [matchAllocation];
 
         const positions = await Positions.aggregate(pipeline);
 

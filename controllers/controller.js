@@ -52,7 +52,14 @@ const matchParents = {
 
 const matchInvestment = {
     "$match": {
-        "$or": [{"Subcategory": {"$eq": "Buy tax"}}, {"Category": {"$eq": "Investments"}}]
+        "$or": [
+            {"Subcategory": {"$eq": "Buy tax"}}, 
+            {"Category": {"$eq": "Stocks"}},
+            {"Category": {"$eq": "Fixed income"}},
+            {"Category": {"$eq": "Crypto"}},
+            {"Category": {"$eq": "Stablecoin"}},
+            {"Category": {"$eq": "Cash"}}
+        ]
     }
 }
 
@@ -68,11 +75,18 @@ const matchAllocation = {
     }
 }
 
-const matchNotNull = {
+const matchPositionNotNull = {
     "$match": {
         "Position": {"$ne": NaN}
     }
 }
+
+const matchFlexPositionNotNull = {
+    "$match": {
+        "Flex position": {"$ne": NaN}
+    }
+}
+
 
 const matchYieldNotNull = {
     "$match": {
@@ -382,7 +396,6 @@ export const getRecords = async (req, res) => {
 export const getHeader = async (req, res) => {
     try {
         const records = await Record.aggregate([
-            matchParents,
             groupSum,
             projectHeaderSum
         ]);
@@ -629,7 +642,7 @@ export const getExpensesSubcategory = async (req, res) => {
 export const getPortfolioHeader = async (req, res) => {
     try {
         const totalIncome = await Record.aggregate([
-            matchParents,
+            // matchParents,
             matchInvestment,
             groupSum,
             projectHeaderSum
@@ -645,6 +658,7 @@ export const getPortfolioHeader = async (req, res) => {
         ]);
         const yearYield = await Positions.aggregate([
             matchL1Y,
+            matchFlexPositionNotNull,
             // matchYieldNotNull,
             groupPositionByDate,
             projectYieldByMonth,
@@ -669,8 +683,8 @@ export const getPortfolioHeader = async (req, res) => {
 export const getAllocation = async (req, res) => {
     try {
         // let groupCategory = [groupAllocationByCategory];
-        let groupCategory = [matchNotNull, groupAllocationByCategory];
-        let groupSubcategory = [matchNotNull, groupAllocationBySubcategory];
+        let groupCategory = [matchPositionNotNull, groupAllocationByCategory];
+        let groupSubcategory = [matchPositionNotNull, groupAllocationBySubcategory];
 
         let mainPipeline = [
             matchAllocation,
@@ -681,14 +695,20 @@ export const getAllocation = async (req, res) => {
             sortByDate
         ]
 
+        console.log(req.query)
         let pipeline;
         if(req.query && req.query.breakdown === "category") {
             pipeline = [...groupCategory, ...mainPipeline] 
         } else {
             pipeline = [...groupSubcategory, ...mainPipeline] 
         } 
-
+        if(req.query && req.query.categories !== undefined) {
+            let categories = JSON.parse(req.query.categories);
+            pipeline.splice(0, 0, matchCategory(categories));
+            console.log('Hi')
+    }
         const positions = await Positions.aggregate(pipeline);
+        // console.log(positions)
 
         res.status(200).json(positions);
     } catch (error) {

@@ -26,9 +26,38 @@ L1Y.setSeconds(0);
 L1Y.setMilliseconds(0);
 L1Y.setMonth(L1Y.getMonth() - 12);
 
-console.log(M);
-// console.log(L3M);
-// console.log(L1Y);
+const convertAllocationToIncome = (categories) => {
+    if(categories.includes('US growth') || categories.includes('US super growth') || categories.includes('US finances') || categories.includes('BR growth') || categories.includes('Real state')) {
+        categories.push('Stocks');
+    }
+    if(categories.includes('NFT games')) {
+        categories.push('Crypto');
+    }
+    return categories;
+}
+
+const removeAllocationFromIncome = (categories) => {
+    let remove = [];
+    if(!categories.includes('US growth')) {
+        remove.push('IVVB11', 'MSFT34', 'GOGL34', 'FBOK34', 'AMZO34', 'DISB34', 'MTD', 'MTF', 'UST', 'RUS', 'SXLU', 'PHPD');
+    }
+    if(!categories.includes('US super growth')) {
+        remove.push('TSLA34');
+    } 
+    if(!categories.includes('US finances')) {
+        remove.push('JPMC34', 'MSBR34');
+    }
+    if(!categories.includes('BR growth')) {
+        remove.push('BRAX11', 'BBSD11');
+    } 
+    if(!categories.includes('Real state')) {
+        remove.push('IRDM11');
+    }
+    if(!categories.includes('Crypto')) {
+        remove.push('BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'BNB', 'DOT', 'MATIC', 'SAND', 'SHIB', 'SOL');
+    }
+    return remove;
+}
 
 // ------------------------------ MATCH ------------------------------ //
 
@@ -54,6 +83,13 @@ const matchInvestment = {
     "$match": {
         "$or": [
             {"Subcategory": {"$eq": "Buy tax"}}, 
+            {"Subcategory": {"$eq": "AXS"}}, 
+            {"Subcategory": {"$eq": "SLP"}}, 
+            {"Subcategory": {"$eq": "ATLAS"}}, 
+            {"Subcategory": {"$eq": "POLIS"}}, 
+            {"Subcategory": {"$eq": "THC"}}, 
+            {"Subcategory": {"$eq": "THG"}}, 
+            {"Subcategory": {"$eq": "FINA"}}, 
             {"Category": {"$eq": "Stocks"}},
             {"Category": {"$eq": "Fixed income"}},
             {"Category": {"$eq": "Crypto"}},
@@ -83,7 +119,10 @@ const matchPositionNotNull = {
 
 const matchFlexPositionNotNull = {
     "$match": {
-        "Flex position": {"$ne": NaN}
+        "$and": [
+            {"Flex position": {"$ne": NaN}},
+            {"Flex position": {"$gt": 1}}
+        ]
     }
 }
 
@@ -108,10 +147,28 @@ const matchCategory = (c) => {
     };
 }
 
+const matchSubcategory = (c) => {
+    return {
+        "$match": {
+            "Subcategory": {"$in":  c}
+        }
+    };
+}
+
+const matchNotSubcategory = (c) => {
+    return {
+        "$match": {
+            "Subcategory": {"$nin":  c}
+        }
+    };
+}
+
+
 // ------------------------------ GROUP ------------------------------ //
 
 const groupByCategory = {
     "$group": {
+        // "_id": {"category": "$Category"},
         "_id": {"date": "$Date", "category": "$Category"},
         "income": {"$sum": "$Income"},
         "expenses": {"$sum": "$Expenses"},
@@ -281,6 +338,7 @@ const projectYieldByMonth = {
         "income": "$income",
         "position": "$position",
         "yield": {"$toDouble": {"$add": [{"$divide": ["$income", "$position"]}, 1]}},
+        // "yield": {"$toDouble": {"$add": [{"$cond": [ { "$eq": [ "$position", 0 ] }, 0, {"$divide": ["$income", "$position"]}]}, 1]}},
         "_id": 0
     }
 }
@@ -395,13 +453,22 @@ export const getRecords = async (req, res) => {
 
 export const getHeader = async (req, res) => {
     try {
+
+        let matchDate = matchL1Y;
+        if(req.query && req.query.dateRange === "Year") {
+            matchDate = matchL1Y;
+        } else if(req.query && req.query.dateRange === "Quarter") {
+            matchDate = matchL3M;
+        } else {
+            matchDate = matchParents;
+        } 
+
         const records = await Record.aggregate([
             groupSum,
             projectHeaderSum
         ]);
         const recordsAvg = await Record.aggregate([
-            matchParents,
-            matchL1Y,
+            matchDate,
             // matchL3M,
             groupByDate,
             projectNetIncome,
@@ -409,8 +476,7 @@ export const getHeader = async (req, res) => {
             projectHeaderAvg
         ]);
         const recordsMargin = await Record.aggregate([
-            matchParents,
-            matchL1Y,
+            matchDate,
             // matchL3M,
             groupSum,
             projectHeaderMargin
@@ -641,15 +707,32 @@ export const getExpensesSubcategory = async (req, res) => {
 
 export const getPortfolioHeader = async (req, res) => {
     try {
+        
+        console.log('getPortfolioHeader controller')
+        console.log(req.query)
+        console.log(JSON.parse(req.query.categories))
+        console.log(convertAllocationToIncome(JSON.parse(req.query.categories)))
+        let dateDict = {Year: matchL1Y, Quarter: matchL3M, All: matchParents}
+        let matchDate = req.query && req.query.dateRange ? dateDict[req.query.dateRange] : matchL1Y;
+        let matchIncomeCategories = req.query && req.query.categories ? matchCategory(convertAllocationToIncome(JSON.parse(req.query.categories))) : matchDate;
+        let matchNotIncomeSubcategories = req.query && req.query.categories ? matchNotSubcategory(removeAllocationFromIncome(JSON.parse(req.query.categories))) : matchDate;
+        let matchCategories = req.query && req.query.categories ? matchCategory(JSON.parse(req.query.categories)) : matchDate;
+        // let matchSubcategories = req.query && req.query.subcategory ? matchSubcategory(JSON.parse(req.query.subcategory)) : matchDate;
+        
         const totalIncome = await Record.aggregate([
-            // matchParents,
+            matchDate,
+            matchIncomeCategories,
+            matchNotIncomeSubcategories,
+            // matchSubcategories,
             matchInvestment,
             groupSum,
             projectHeaderSum
         ]);
         const incomeAvg = await Record.aggregate([
-            matchParents,
-            matchL1Y,
+            matchDate,
+            matchIncomeCategories,
+            matchNotIncomeSubcategories,
+            // matchSubcategories,
             matchInvestment,
             groupByDate,
             projectNetIncome,
@@ -657,17 +740,31 @@ export const getPortfolioHeader = async (req, res) => {
             projectHeaderAvg
         ]);
         const yearYield = await Positions.aggregate([
-            matchL1Y,
+            matchDate,
+            matchCategories,
+            // matchSubcategories,
             matchFlexPositionNotNull,
-            // matchYieldNotNull,
             groupPositionByDate,
             projectYieldByMonth,
         ]);
 
         const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
 
+
+        const debug = await Positions.aggregate([
+            matchDate,
+            matchCategories,
+            // matchSubcategories,
+            matchFlexPositionNotNull,
+            groupPositionByDate,
+            projectYieldByMonth,
+        ]);
+        console.log('debug')
+        console.log(debug)
+
         // res.status(200).json(
-        //     yearYield
+        //     totalIncome
+        //     // yearYield
         // );
 
         res.status(200).json([
@@ -695,7 +792,6 @@ export const getAllocation = async (req, res) => {
             sortByDate
         ]
 
-        console.log(req.query)
         let pipeline;
         if(req.query && req.query.breakdown === "category") {
             pipeline = [...groupCategory, ...mainPipeline] 
@@ -705,7 +801,6 @@ export const getAllocation = async (req, res) => {
         if(req.query && req.query.categories !== undefined) {
             let categories = JSON.parse(req.query.categories);
             pipeline.splice(0, 0, matchCategory(categories));
-            console.log('Hi')
     }
         const positions = await Positions.aggregate(pipeline);
         // console.log(positions)

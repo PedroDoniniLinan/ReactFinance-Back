@@ -751,13 +751,22 @@ export const getPortfolioHeader = async (req, res) => {
         const totalYield = yearYield.reduce((prev, curr) => prev * curr.yield, 1);
 
 
-        const debug = await Positions.aggregate([
+        const debug = await Record.aggregate([
             matchDate,
-            matchCategories,
+            matchIncomeCategories,
+            matchNotIncomeSubcategories,
             // matchSubcategories,
-            matchFlexPositionNotNull,
-            groupPositionByDate,
-            projectYieldByMonth,
+            matchInvestment,
+            {
+                "$group": {
+                    "_id": {"category": "$Category"},
+                    // "_id": {"date": "$Date", "category": "$Category"},
+                    "income": {"$sum": "$Income"},
+                    "expenses": {"$sum": "$Expenses"},
+                }
+            }
+            // groupSum,
+            // projectHeaderSum
         ]);
         console.log('debug')
         console.log(debug)
